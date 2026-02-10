@@ -1,0 +1,1184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>2D Arena Duel (Bo3) — Swords & Science</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin:0; height:100%; background:#0b0f14; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    #wrap { position:relative; height:100%; overflow:hidden; }
+    canvas { display:block; width:100%; height:100%; }
+
+    /* UI */
+    .hud {
+      position:absolute; inset:0; pointer-events:none;
+      display:flex; flex-direction:column; justify-content:space-between;
+      padding:14px;
+    }
+    .topRow { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; }
+    .panel {
+      pointer-events:auto;
+      background: rgba(10,14,20,.72);
+      border: 1px solid rgba(180,220,255,.12);
+      border-radius: 14px;
+      padding: 10px 12px;
+      box-shadow: 0 12px 28px rgba(0,0,0,.35);
+      backdrop-filter: blur(8px);
+      max-width: 560px;
+    }
+    .title { font-weight:700; letter-spacing:.2px; margin:0 0 6px; font-size:14px; opacity:.95; }
+    .muted { opacity:.75; font-size:12px; line-height:1.35; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    button, select {
+      background:#122033;
+      border:1px solid rgba(180,220,255,.18);
+      color:#e8f2ff;
+      border-radius:12px;
+      padding:10px 12px;
+      font-weight:600;
+      cursor:pointer;
+    }
+    button:hover { filter:brightness(1.12); }
+    button:active { transform: translateY(1px); }
+    .danger { background:#2a1417; border-color: rgba(255,140,140,.22); }
+    .good { background:#122a1c; border-color: rgba(140,255,190,.22); }
+
+    .bars { display:flex; gap:10px; align-items:center; }
+    .barWrap {
+      width: 260px; max-width: 38vw;
+      height: 14px; border-radius: 10px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(180,220,255,.12);
+      overflow:hidden;
+    }
+    .bar { height:100%; width:50%; }
+    .tag {
+      display:inline-flex; align-items:center; gap:6px;
+      font-size:12px; padding:4px 10px; border-radius: 999px;
+      border:1px solid rgba(180,220,255,.14);
+      background: rgba(255,255,255,.06);
+      opacity:.9;
+    }
+    .bottomRow { display:flex; justify-content:space-between; gap:12px; align-items:flex-end; }
+    .centerToast {
+      position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+      text-align:center; pointer-events:none;
+      padding: 14px 16px; border-radius: 16px;
+      background: rgba(10,14,20,.78);
+      border: 1px solid rgba(180,220,255,.12);
+      box-shadow: 0 18px 44px rgba(0,0,0,.45);
+      min-width: min(520px, 90vw);
+    }
+    .centerToast h1 { margin:0 0 6px; font-size:22px; letter-spacing:.2px; }
+    .centerToast p { margin:0; opacity:.78; line-height:1.4; }
+
+    .hidden { display:none !important; }
+
+    .kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size:11px;
+      padding:2px 6px;
+      border-radius:6px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(180,220,255,.12);
+    }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+
+  <div class="hud">
+    <div class="topRow">
+      <div class="panel" id="menuPanel">
+        <div class="title">2D Arena Duel — Swords & Science</div>
+        <div class="muted" style="margin-bottom:10px;">
+          Best of 3 rounds. Swing your sword, grab science items, win 2 rounds.
+        </div>
+
+        <div class="row" style="margin-bottom:10px;">
+          <label class="tag">Mode
+            <select id="modeSel" style="margin-left:8px;">
+              <option value="1p">1 Player (vs Smart NPC)</option>
+              <option value="2p">2 Player (Local)</option>
+            </select>
+          </label>
+
+          <label class="tag">Round Time
+            <select id="timeSel" style="margin-left:8px;">
+              <option value="60">60s</option>
+              <option value="75">75s</option>
+              <option value="90">90s</option>
+            </select>
+          </label>
+
+          <label class="tag">NPC Difficulty
+            <select id="aiSel" style="margin-left:8px;">
+              <option value="normal">Normal</option>
+              <option value="hard">Hard</option>
+              <option value="insane">Insane</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <button class="good" id="startBtn">Start Match</button>
+          <button id="howBtn">Controls</button>
+        </div>
+
+        <div id="howBox" class="muted hidden" style="margin-top:10px;">
+          <div style="margin-bottom:6px;"><b>Player 1</b>:
+            <span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span> move,
+            <span class="kbd">Space</span> swing
+          </div>
+          <div style="margin-bottom:6px;"><b>Player 2</b> (2P mode):
+            <span class="kbd">↑</span><span class="kbd">←</span><span class="kbd">↓</span><span class="kbd">→</span> move,
+            <span class="kbd">Enter</span> swing
+          </div>
+          <div>
+            <b>Science Items</b>: walk over to pick up buffs (speed, shield, heal, damage, gravity boots).
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="scorePanel">
+        <div class="row" style="justify-content:space-between; margin-bottom:8px;">
+          <span class="tag" id="roundTag">Round 1 / 3</span>
+          <span class="tag" id="modeTag">Mode: 1P</span>
+          <span class="tag" id="timerTag">Time: 60</span>
+        </div>
+
+        <div class="bars" style="margin-bottom:8px;">
+          <div style="min-width:70px;">
+            <div class="muted" id="p1Name">P1</div>
+            <div class="muted" id="p1Buffs"></div>
+          </div>
+          <div class="barWrap" title="Player 1 HP"><div class="bar" id="p1Bar"></div></div>
+          <span class="tag" id="p1Rounds">0</span>
+        </div>
+
+        <div class="bars" style="margin-bottom:8px;">
+          <div style="min-width:70px;">
+            <div class="muted" id="p2Name">NPC</div>
+            <div class="muted" id="p2Buffs"></div>
+          </div>
+          <div class="barWrap" title="Player 2 HP"><div class="bar" id="p2Bar"></div></div>
+          <span class="tag" id="p2Rounds">0</span>
+        </div>
+
+        <div class="row" style="justify-content:space-between;">
+          <div class="muted" id="hintLine">Grab items. Win 2 rounds.</div>
+          <div class="row">
+            <button class="danger" id="resetBtn">Back to Menu</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottomRow">
+      <div class="panel muted" id="itemLegend">
+        <b>Science Items</b>:
+        🧪 Nano-Heal, ⚡ Photon-Boost, 🛡️ Quantum-Shield, 🔥 Plasma-Edge, 🪐 Gravity-Boots
+      </div>
+      <div class="panel muted" id="footerNote">
+        Tip: sword hits are directional — face your opponent.
+      </div>
+    </div>
+
+    <div class="centerToast hidden" id="toast">
+      <h1 id="toastTitle">Round Start</h1>
+      <p id="toastBody">Get ready.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ===== Utilities =====
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const dist2 = (ax, ay, bx, by) => {
+    const dx = ax - bx, dy = ay - by;
+    return dx*dx + dy*dy;
+  };
+  const len = (x, y) => Math.hypot(x, y) || 1;
+  const norm = (x, y) => {
+    const l = len(x, y);
+    return [x/l, y/l];
+  };
+  const angleTo = (ax, ay, bx, by) => Math.atan2(by - ay, bx - ax);
+  const wrapAngle = (a) => {
+    while (a > Math.PI) a -= 2*Math.PI;
+    while (a < -Math.PI) a += 2*Math.PI;
+    return a;
+  };
+
+  // ===== Canvas setup =====
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ===== UI elements =====
+  const menuPanel = document.getElementById('menuPanel');
+  const scorePanel = document.getElementById('scorePanel');
+  const startBtn = document.getElementById('startBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const howBtn = document.getElementById('howBtn');
+  const howBox = document.getElementById('howBox');
+  const modeSel = document.getElementById('modeSel');
+  const timeSel = document.getElementById('timeSel');
+  const aiSel = document.getElementById('aiSel');
+
+  const roundTag = document.getElementById('roundTag');
+  const modeTag = document.getElementById('modeTag');
+  const timerTag = document.getElementById('timerTag');
+  const p1Bar = document.getElementById('p1Bar');
+  const p2Bar = document.getElementById('p2Bar');
+  const p1RoundsEl = document.getElementById('p1Rounds');
+  const p2RoundsEl = document.getElementById('p2Rounds');
+  const p1NameEl = document.getElementById('p1Name');
+  const p2NameEl = document.getElementById('p2Name');
+  const p1BuffsEl = document.getElementById('p1Buffs');
+  const p2BuffsEl = document.getElementById('p2Buffs');
+  const hintLine = document.getElementById('hintLine');
+
+  const toast = document.getElementById('toast');
+  const toastTitle = document.getElementById('toastTitle');
+  const toastBody = document.getElementById('toastBody');
+
+  howBtn.addEventListener('click', () => howBox.classList.toggle('hidden'));
+
+  // ===== Input =====
+  const keys = new Set();
+  window.addEventListener('keydown', (e) => {
+    // prevent page scrolling on arrows/space
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    keys.add(e.key);
+  });
+  window.addEventListener('keyup', (e) => keys.delete(e.key));
+
+  // ===== Game constants =====
+  const ARENA_MARGIN = 60;
+  const ROUND_MAX = 3;
+  const MAX_HP = 100;
+
+  // Sword hit is a cone in front of player
+  const SWORD_RANGE = 62;
+  const SWORD_ARC = Math.PI * 0.75; // 135 degrees
+  const SWORD_COOLDOWN = 0.55; // seconds
+  const SWORD_WINDUP = 0.10;   // seconds
+  const SWORD_ACTIVE = 0.14;   // seconds
+  const BASE_DAMAGE = 18;
+  const BASE_KNOCKBACK = 320;
+
+  const ITEM_RADIUS = 14;
+  const ITEM_RESPAWN = 8.0; // seconds
+
+  // ===== Items / buffs =====
+  const ItemType = {
+    HEAL: 'HEAL',
+    SPEED: 'SPEED',
+    SHIELD: 'SHIELD',
+    DAMAGE: 'DAMAGE',
+    GRAVITY: 'GRAVITY',
+  };
+
+  const itemDefs = [
+    { type: ItemType.HEAL,    emoji:'🧪', name:'Nano-Heal',    desc:'+35 HP instantly',              color:'#82ffd1' },
+    { type: ItemType.SPEED,   emoji:'⚡', name:'Photon-Boost', desc:'+35% speed for 7s',             color:'#8bd3ff' },
+    { type: ItemType.SHIELD,  emoji:'🛡️', name:'Quantum-Shield',desc:'-35% damage for 7s',          color:'#c5b2ff' },
+    { type: ItemType.DAMAGE,  emoji:'🔥', name:'Plasma-Edge',  desc:'+35% damage for 7s',            color:'#ffb28b' },
+    { type: ItemType.GRAVITY, emoji:'🪐', name:'Gravity-Boots',desc:'-40% knockback for 7s',         color:'#ffd98b' },
+  ];
+
+  function pickRandomItemDef() {
+    return itemDefs[(Math.random() * itemDefs.length) | 0];
+  }
+
+  // ===== Entities =====
+  class Player {
+    constructor(id, name, x, y, isNpc=false) {
+      this.id = id;
+      this.name = name;
+      this.x = x; this.y = y;
+      this.vx = 0; this.vy = 0;
+      this.r = 18;
+      this.hp = MAX_HP;
+
+      this.facing = 0; // radians
+      this.isNpc = isNpc;
+
+      // sword state
+      this.attackT = 0;        // time since attack started (0=not attacking)
+      this.cooldown = 0;
+
+      // buffs timers
+      this.buff = {
+        speed: 0,
+        shield: 0,
+        damage: 0,
+        gravity: 0,
+      };
+
+      // for NPC memory
+      this.ai = {
+        desireAngle: 0,
+        strafeDir: Math.random() < 0.5 ? -1 : 1,
+        nextStrafeSwap: rand(0.6, 1.4),
+        thinkTimer: 0,
+        baitTimer: rand(0.4, 1.2),
+        lastEnemyX: x,
+        lastEnemyY: y,
+        lastEnemyVX: 0,
+        lastEnemyVY: 0,
+        panic: 0
+      };
+    }
+
+    get speedMul()  { return this.buff.speed   > 0 ? 1.35 : 1.0; }
+    get dmgMul()    { return this.buff.damage  > 0 ? 1.35 : 1.0; }
+    get shieldMul() { return this.buff.shield  > 0 ? 0.65 : 1.0; } // incoming damage multiplier
+    get kbMul()     { return this.buff.gravity > 0 ? 0.60 : 1.0; }
+
+    resetForRound(x, y) {
+      this.x = x; this.y = y;
+      this.vx = 0; this.vy = 0;
+      this.hp = MAX_HP;
+      this.attackT = 0;
+      this.cooldown = 0;
+      this.buff.speed = this.buff.shield = this.buff.damage = this.buff.gravity = 0;
+    }
+
+    startAttack() {
+      if (this.cooldown > 0 || this.attackT > 0) return false;
+      this.attackT = 0.0001; // begin
+      this.cooldown = SWORD_COOLDOWN;
+      return true;
+    }
+
+    update(dt, arena, inputVec, wantAttack, enemy, items, aiProfile) {
+      // Buff timers
+      for (const k of Object.keys(this.buff)) {
+        this.buff[k] = Math.max(0, this.buff[k] - dt);
+      }
+
+      // Cooldowns
+      this.cooldown = Math.max(0, this.cooldown - dt);
+
+      // Attack timeline
+      let attackPhase = 'NONE';
+      if (this.attackT > 0) {
+        this.attackT += dt;
+        if (this.attackT < SWORD_WINDUP) attackPhase = 'WINDUP';
+        else if (this.attackT < SWORD_WINDUP + SWORD_ACTIVE) attackPhase = 'ACTIVE';
+        else { this.attackT = 0; attackPhase = 'END'; }
+      }
+
+      // Controls / movement
+      const BASE_SPEED = 260 * this.speedMul;
+
+      let ax = 0, ay = 0;
+      if (!this.isNpc) {
+        ax = inputVec[0];
+        ay = inputVec[1];
+      } else {
+        const v = this.npcBrain(dt, enemy, items, arena, aiProfile);
+        ax = v[0]; ay = v[1];
+      }
+
+      // Normalize
+      const mag = Math.hypot(ax, ay);
+      if (mag > 1) { ax /= mag; ay /= mag; }
+
+      // Facing: if moving, face move dir; otherwise face enemy
+      if (mag > 0.1) this.facing = Math.atan2(ay, ax);
+      else if (enemy) this.facing = angleTo(this.x, this.y, enemy.x, enemy.y);
+
+      // Acceleration & friction
+      const ACC = 1600;
+      this.vx += ax * ACC * dt;
+      this.vy += ay * ACC * dt;
+
+      // Cap speed
+      const vmag = Math.hypot(this.vx, this.vy);
+      const vmax = BASE_SPEED;
+      if (vmag > vmax) {
+        this.vx = this.vx / vmag * vmax;
+        this.vy = this.vy / vmag * vmax;
+      }
+
+      // Friction
+      const F = 12;
+      this.vx = lerp(this.vx, 0, 1 - Math.exp(-F * dt));
+      this.vy = lerp(this.vy, 0, 1 - Math.exp(-F * dt));
+
+      // Move
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+
+      // Stay in arena
+      const minX = arena.x + this.r, maxX = arena.x + arena.w - this.r;
+      const minY = arena.y + this.r, maxY = arena.y + arena.h - this.r;
+      this.x = clamp(this.x, minX, maxX);
+      this.y = clamp(this.y, minY, maxY);
+
+      // Attack input
+      if (wantAttack) this.startAttack();
+
+      return attackPhase;
+    }
+
+    npcBrain(dt, enemy, items, arena, aiProfile) {
+      // Difficulty knobs
+      const diff = aiProfile; // {react, bravery, itemGreed, dodge, aim}
+      const ax = 0, ay = 0;
+
+      // Update enemy velocity estimate
+      const ex = enemy.x, ey = enemy.y;
+      const evx = (ex - this.ai.lastEnemyX) / Math.max(1e-6, dt);
+      const evy = (ey - this.ai.lastEnemyY) / Math.max(1e-6, dt);
+      this.ai.lastEnemyVX = lerp(this.ai.lastEnemyVX, evx, 0.35);
+      this.ai.lastEnemyVY = lerp(this.ai.lastEnemyVY, evy, 0.35);
+      this.ai.lastEnemyX = ex; this.ai.lastEnemyY = ey;
+
+      // Think rhythm
+      this.ai.thinkTimer -= dt;
+      if (this.ai.thinkTimer <= 0) {
+        this.ai.thinkTimer = rand(0.06, 0.12) / diff.react;
+
+        // strafe swapping
+        this.ai.nextStrafeSwap -= dt;
+        if (this.ai.nextStrafeSwap <= 0) {
+          this.ai.strafeDir *= -1;
+          this.ai.nextStrafeSwap = rand(0.5, 1.4);
+        }
+      }
+
+      const dx = enemy.x - this.x;
+      const dy = enemy.y - this.y;
+      const d = Math.hypot(dx, dy);
+
+      // Pick a target item occasionally (heal if low, else nearest good buff)
+      let targetItem = null;
+      const wantHeal = this.hp < 55;
+      if (items.length && (Math.random() < 0.08 * diff.itemGreed || wantHeal)) {
+        let best = null;
+        let bestScore = Infinity;
+        for (const it of items) {
+          if (!it.active) continue;
+          const dd = Math.hypot(it.x - this.x, it.y - this.y);
+          let score = dd;
+
+          if (wantHeal && it.def.type === ItemType.HEAL) score *= 0.35;
+          if (!wantHeal && it.def.type === ItemType.DAMAGE) score *= 0.75;
+          if (!wantHeal && it.def.type === ItemType.SPEED)  score *= 0.85;
+          if (!wantHeal && it.def.type === ItemType.SHIELD) score *= 0.90;
+
+          // don't chase items too far when enemy close
+          if (d < 140) score *= 1.6;
+
+          if (score < bestScore) { bestScore = score; best = it; }
+        }
+        targetItem = best;
+      }
+
+      // Predict enemy position slightly
+      const leadT = clamp(0.18 * diff.aim, 0.10, 0.28);
+      const px = enemy.x + this.ai.lastEnemyVX * leadT;
+      const py = enemy.y + this.ai.lastEnemyVY * leadT;
+
+      const toEnemyAng = angleTo(this.x, this.y, px, py);
+      const [nx, ny] = norm(Math.cos(toEnemyAng), Math.sin(toEnemyAng));
+
+      // Danger zone & dodge
+      const enemyThreat = d < 115;
+      const myThreat = d < 95;
+
+      // Panic when low HP
+      const lowHp = this.hp < 35;
+      this.ai.panic = lerp(this.ai.panic, lowHp ? 1 : 0, 1 - Math.exp(-2.2 * dt));
+
+      // Desired movement: approach, strafe, or retreat
+      let mvx = 0, mvy = 0;
+
+      // If healing item is available and low HP: bias to item
+      if (targetItem && (wantHeal || Math.random() < 0.35 * diff.itemGreed)) {
+        const ix = targetItem.x - this.x;
+        const iy = targetItem.y - this.y;
+        const [inx, iny] = norm(ix, iy);
+        mvx += inx * 1.0;
+        mvy += iny * 1.0;
+
+        // still keep some awareness of enemy to avoid free hits
+        if (enemyThreat) {
+          mvx -= nx * 0.35 * diff.dodge;
+          mvy -= ny * 0.35 * diff.dodge;
+        }
+      } else {
+        // spacing logic
+        const ideal = lerp(110, 95, diff.bravery); // brave wants closer
+        if (d > ideal + 40) { // approach
+          mvx += nx * 0.95;
+          mvy += ny * 0.95;
+        } else if (d < ideal - 25) { // retreat
+          mvx -= nx * (0.9 + 0.3*this.ai.panic) * diff.dodge;
+          mvy -= ny * (0.9 + 0.3*this.ai.panic) * diff.dodge;
+        } else {
+          // strafe around
+          const sx = -ny * this.ai.strafeDir;
+          const sy =  nx * this.ai.strafeDir;
+          mvx += sx * 0.85;
+          mvy += sy * 0.85;
+
+          // small forward pressure if buffed
+          if (this.buff.damage > 0 || this.buff.speed > 0) {
+            mvx += nx * 0.25 * diff.bravery;
+            mvy += ny * 0.25 * diff.bravery;
+          }
+        }
+
+        // dodge burst if close
+        if (myThreat && Math.random() < 0.14 * diff.dodge) {
+          const sx = -ny * (Math.random() < 0.5 ? -1 : 1);
+          const sy =  nx * (Math.random() < 0.5 ? -1 : 1);
+          mvx += sx * 1.25;
+          mvy += sy * 1.25;
+        }
+      }
+
+      // Wall avoid
+      const pad = 40;
+      if (this.x < arena.x + pad) mvx += 0.8;
+      if (this.x > arena.x + arena.w - pad) mvx -= 0.8;
+      if (this.y < arena.y + pad) mvy += 0.8;
+      if (this.y > arena.y + arena.h - pad) mvy -= 0.8;
+
+      // clamp vector
+      const m = Math.hypot(mvx, mvy);
+      if (m > 1) { mvx /= m; mvy /= m; }
+
+      return [mvx, mvy];
+    }
+
+    getBuffText() {
+      const parts = [];
+      if (this.buff.speed   > 0) parts.push('⚡');
+      if (this.buff.shield  > 0) parts.push('🛡️');
+      if (this.buff.damage  > 0) parts.push('🔥');
+      if (this.buff.gravity > 0) parts.push('🪐');
+      return parts.join(' ') || '—';
+    }
+  }
+
+  class Item {
+    constructor(def, x, y) {
+      this.def = def;
+      this.x = x; this.y = y;
+      this.r = ITEM_RADIUS;
+      this.active = true;
+      this.respawnT = 0;
+    }
+    update(dt) {
+      if (!this.active) {
+        this.respawnT -= dt;
+        if (this.respawnT <= 0) {
+          this.active = true;
+        }
+      }
+    }
+    despawn() {
+      this.active = false;
+      this.respawnT = ITEM_RESPAWN;
+    }
+  }
+
+  // ===== Particles (simple confetti) =====
+  const confetti = [];
+  function spawnConfetti(cx, cy, count=160) {
+    for (let i=0; i<count; i++) {
+      const a = rand(0, Math.PI*2);
+      const s = rand(90, 520);
+      confetti.push({
+        x: cx, y: cy,
+        vx: Math.cos(a)*s,
+        vy: Math.sin(a)*s - rand(120, 380),
+        g: rand(520, 920),
+        life: rand(1.0, 1.8),
+        t: 0,
+        rot: rand(0, Math.PI*2),
+        vr: rand(-8, 8),
+        size: rand(4, 9),
+        hue: rand(0, 360),
+      });
+    }
+  }
+
+  function updateConfetti(dt) {
+    for (let i = confetti.length - 1; i >= 0; i--) {
+      const p = confetti[i];
+      p.t += dt;
+      p.vy += p.g * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.vr * dt;
+      if (p.t >= p.life) confetti.splice(i, 1);
+    }
+  }
+
+  function drawConfetti() {
+    for (const p of confetti) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = 1 - (p.t / p.life);
+      ctx.fillStyle = `hsl(${p.hue} 90% 60%)`;
+      ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size*1.6);
+      ctx.restore();
+    }
+  }
+
+  // ===== Game state =====
+  const GameState = {
+    MENU: 'MENU',
+    PLAY: 'PLAY',
+    BETWEEN: 'BETWEEN',
+    MATCH_OVER: 'MATCH_OVER',
+  };
+
+  let state = GameState.MENU;
+  let mode = '1p';
+  let roundTime = 60;
+  let aiDifficulty = 'normal';
+
+  const arena = { x: 0, y: 0, w: 0, h: 0 };
+  const items = [];
+
+  const p1 = new Player(1, 'P1', 0, 0, false);
+  const p2 = new Player(2, 'NPC', 0, 0, true);
+
+  let currentRound = 1;
+  let p1Rounds = 0;
+  let p2Rounds = 0;
+  let timeLeft = 60;
+  let freezeT = 0; // between rounds countdown
+  let lastWinner = null;
+
+  // AI Profiles
+  function getAIProfile() {
+    // react: how often it updates decisions; bravery: close combat tendency
+    // itemGreed: likes grabbing items; dodge: evasiveness; aim: prediction strength
+    if (aiDifficulty === 'hard') {
+      return { react: 1.25, bravery: 0.65, itemGreed: 1.10, dodge: 1.20, aim: 1.15 };
+    }
+    if (aiDifficulty === 'insane') {
+      return { react: 1.55, bravery: 0.78, itemGreed: 1.20, dodge: 1.40, aim: 1.30 };
+    }
+    return { react: 1.0, bravery: 0.55, itemGreed: 1.0, dodge: 1.0, aim: 1.0 };
+  }
+
+  // ===== Setup / Round control =====
+  function computeArena() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    arena.x = ARENA_MARGIN;
+    arena.y = ARENA_MARGIN + 40; // leave a bit for top UI feeling
+    arena.w = w - ARENA_MARGIN*2;
+    arena.h = h - ARENA_MARGIN*2 - 60;
+  }
+
+  function resetItems() {
+    items.length = 0;
+    const count = 5; // number of items on field
+    for (let i=0; i<count; i++) {
+      const def = pickRandomItemDef();
+      const x = rand(arena.x + 70, arena.x + arena.w - 70);
+      const y = rand(arena.y + 70, arena.y + arena.h - 70);
+      items.push(new Item(def, x, y));
+    }
+  }
+
+  function setToast(show, title='', body='') {
+    toastTitle.textContent = title;
+    toastBody.textContent = body;
+    toast.classList.toggle('hidden', !show);
+  }
+
+  function startMatch() {
+    mode = modeSel.value;
+    roundTime = parseInt(timeSel.value, 10);
+    aiDifficulty = aiSel.value;
+
+    p1NameEl.textContent = 'P1';
+    p2NameEl.textContent = (mode === '1p') ? 'NPC' : 'P2';
+    p2.isNpc = (mode === '1p');
+
+    p1Rounds = 0; p2Rounds = 0;
+    currentRound = 1;
+    timeLeft = roundTime;
+
+    computeArena();
+    resetItems();
+
+    const cx = arena.x + arena.w/2;
+    const cy = arena.y + arena.h/2;
+    p1.resetForRound(cx - 160, cy);
+    p2.resetForRound(cx + 160, cy);
+
+    state = GameState.BETWEEN;
+    freezeT = 1.25;
+    lastWinner = null;
+
+    menuPanel.classList.add('hidden');
+    setToast(true, `Round ${currentRound}`, 'Fight!');
+  }
+
+  function backToMenu() {
+    state = GameState.MENU;
+    menuPanel.classList.remove('hidden');
+    setToast(false);
+    confetti.length = 0;
+  }
+
+  function startNextRound() {
+    currentRound++;
+    if (currentRound > ROUND_MAX || p1Rounds >= 2 || p2Rounds >= 2) {
+      endMatch();
+      return;
+    }
+    timeLeft = roundTime;
+    computeArena();
+    resetItems();
+
+    const cx = arena.x + arena.w/2;
+    const cy = arena.y + arena.h/2;
+    p1.resetForRound(cx - 160, cy);
+    p2.resetForRound(cx + 160, cy);
+
+    state = GameState.BETWEEN;
+    freezeT = 1.25;
+    setToast(true, `Round ${currentRound}`, 'Fight!');
+  }
+
+  function endRound(winner) {
+    lastWinner = winner;
+    if (winner === p1) p1Rounds++;
+    else if (winner === p2) p2Rounds++;
+
+    // If someone already got 2 wins, end match
+    if (p1Rounds >= 2 || p2Rounds >= 2 || currentRound >= ROUND_MAX) {
+      endMatch();
+      return;
+    }
+
+    state = GameState.BETWEEN;
+    freezeT = 1.6;
+    setToast(true, `Round ${currentRound} Over`, `${winner.name} wins the round!`);
+  }
+
+  function endMatch() {
+    state = GameState.MATCH_OVER;
+    const champ = (p1Rounds > p2Rounds) ? p1 : p2;
+    setToast(true, 'Congrats! You beat the game!', `${champ.name} wins the match (${p1Rounds}-${p2Rounds}). Click “Back to Menu” to play again.`);
+    spawnConfetti(window.innerWidth/2, window.innerHeight/2, 220);
+  }
+
+  // ===== Combat / collisions =====
+  function resolvePlayerCollision(a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const d = Math.hypot(dx, dy);
+    const minD = a.r + b.r;
+    if (d < minD && d > 0.0001) {
+      const overlap = (minD - d);
+      const nx = dx / d, ny = dy / d;
+      a.x -= nx * overlap * 0.5;
+      a.y -= ny * overlap * 0.5;
+      b.x += nx * overlap * 0.5;
+      b.y += ny * overlap * 0.5;
+    }
+  }
+
+  function attemptSwordHit(attacker, defender) {
+    // Check in range
+    const d2 = dist2(attacker.x, attacker.y, defender.x, defender.y);
+    if (d2 > SWORD_RANGE*SWORD_RANGE) return false;
+
+    // Check angle: defender must be within attack cone
+    const angToDef = angleTo(attacker.x, attacker.y, defender.x, defender.y);
+    const diff = Math.abs(wrapAngle(angToDef - attacker.facing));
+    if (diff > (SWORD_ARC * 0.5)) return false;
+
+    // Apply damage & knockback
+    const dmg = BASE_DAMAGE * attacker.dmgMul;
+    const final = dmg * defender.shieldMul;
+    defender.hp = Math.max(0, defender.hp - final);
+
+    // Knockback direction
+    const [nx, ny] = norm(defender.x - attacker.x, defender.y - attacker.y);
+    const kb = BASE_KNOCKBACK * defender.kbMul;
+    defender.vx += nx * kb * (0.010 + Math.random()*0.004);
+    defender.vy += ny * kb * (0.010 + Math.random()*0.004);
+
+    return true;
+  }
+
+  function checkItemPickups(pl) {
+    for (const it of items) {
+      if (!it.active) continue;
+      const d2 = dist2(pl.x, pl.y, it.x, it.y);
+      if (d2 <= (pl.r + it.r + 2) ** 2) {
+        applyItem(pl, it);
+        it.despawn();
+      }
+    }
+  }
+
+  function applyItem(pl, it) {
+    const t = it.def.type;
+    if (t === ItemType.HEAL) {
+      pl.hp = Math.min(MAX_HP, pl.hp + 35);
+      return;
+    }
+    const DUR = 7.0;
+    if (t === ItemType.SPEED)   pl.buff.speed   = Math.max(pl.buff.speed, DUR);
+    if (t === ItemType.SHIELD)  pl.buff.shield  = Math.max(pl.buff.shield, DUR);
+    if (t === ItemType.DAMAGE)  pl.buff.damage  = Math.max(pl.buff.damage, DUR);
+    if (t === ItemType.GRAVITY) pl.buff.gravity = Math.max(pl.buff.gravity, DUR);
+  }
+
+  // ===== Controls mapping =====
+  function getMoveVecP1() {
+    let x = 0, y = 0;
+    if (keys.has('w') || keys.has('W')) y -= 1;
+    if (keys.has('s') || keys.has('S')) y += 1;
+    if (keys.has('a') || keys.has('A')) x -= 1;
+    if (keys.has('d') || keys.has('D')) x += 1;
+    return [x, y];
+  }
+  function getMoveVecP2() {
+    let x = 0, y = 0;
+    if (keys.has('ArrowUp')) y -= 1;
+    if (keys.has('ArrowDown')) y += 1;
+    if (keys.has('ArrowLeft')) x -= 1;
+    if (keys.has('ArrowRight')) x += 1;
+    return [x, y];
+  }
+
+  function wantsAttackP1() { return keys.has(' '); }
+  function wantsAttackP2() { return keys.has('Enter'); }
+
+  // ===== Render =====
+  function drawArena() {
+    // Background
+    ctx.fillStyle = '#0b0f14';
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    // subtle grid
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = 'rgba(180,220,255,.08)';
+    const step = 46;
+    for (let x=0; x<window.innerWidth; x+=step) {
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,window.innerHeight); ctx.stroke();
+    }
+    for (let y=0; y<window.innerHeight; y+=step) {
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(window.innerWidth,y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // Arena border
+    ctx.save();
+    ctx.fillStyle = 'rgba(180,220,255,.05)';
+    ctx.strokeStyle = 'rgba(180,220,255,.18)';
+    ctx.lineWidth = 2;
+    roundRect(ctx, arena.x, arena.y, arena.w, arena.h, 18);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr, y);
+    ctx.arcTo(x+w, y, x+w, y+h, rr);
+    ctx.arcTo(x+w, y+h, x, y+h, rr);
+    ctx.arcTo(x, y+h, x, y, rr);
+    ctx.arcTo(x, y, x+w, y, rr);
+    ctx.closePath();
+  }
+
+  function drawItem(it) {
+    if (!it.active) return;
+
+    ctx.save();
+    // glow
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = it.def.color;
+    ctx.beginPath();
+    ctx.arc(it.x, it.y, it.r + 10, 0, Math.PI*2);
+    ctx.fill();
+
+    // core
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(10,14,20,.85)';
+    ctx.beginPath();
+    ctx.arc(it.x, it.y, it.r+2, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(180,220,255,.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(it.x, it.y, it.r+2, 0, Math.PI*2);
+    ctx.stroke();
+
+    // emoji
+    ctx.font = '18px system-ui, Apple Color Emoji, Segoe UI Emoji';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#e8f2ff';
+    ctx.fillText(it.def.emoji, it.x, it.y+0.5);
+    ctx.restore();
+  }
+
+  function drawPlayer(pl, color) {
+    // body
+    ctx.save();
+    ctx.translate(pl.x, pl.y);
+
+    // shadow
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(0, pl.r*0.75, pl.r*1.05, pl.r*0.55, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // buffs glow
+    const glow = (pl.buff.speed>0 || pl.buff.shield>0 || pl.buff.damage>0 || pl.buff.gravity>0);
+    if (glow) {
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(0, 0, pl.r + 10, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // main circle
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(0, 0, pl.r, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,.22)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, pl.r, 0, Math.PI*2);
+    ctx.stroke();
+
+    // facing indicator
+    ctx.rotate(pl.facing);
+    ctx.strokeStyle = 'rgba(0,0,0,.35)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.lineTo(pl.r + 10, 0);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255,255,255,.78)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.lineTo(pl.r + 10, 0);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // sword arc visuals
+    if (pl.attackT > 0) {
+      const t = pl.attackT;
+      const a0 = pl.facing - SWORD_ARC/2;
+      const a1 = pl.facing + SWORD_ARC/2;
+      const active = (t >= SWORD_WINDUP && t < SWORD_WINDUP + SWORD_ACTIVE);
+
+      ctx.save();
+      ctx.globalAlpha = active ? 0.35 : 0.18;
+      ctx.strokeStyle = active ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.35)';
+      ctx.lineWidth = active ? 4 : 2;
+      ctx.beginPath();
+      ctx.arc(pl.x, pl.y, SWORD_RANGE, a0, a1);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // name tag
+    ctx.save();
+    ctx.font = '12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = 'rgba(232,242,255,.92)';
+    ctx.fillText(pl.name, pl.x, pl.y - pl.r - 10);
+    ctx.restore();
+  }
+
+  function draw() {
+    drawArena();
+
+    // items
+    for (const it of items) drawItem(it);
+
+    // players
+    drawPlayer(p1, '#64b7ff');
+    drawPlayer(p2, p2.isNpc ? '#ff7aa6' : '#7dffb1');
+
+    // particles
+    drawConfetti();
+  }
+
+  // ===== UI update =====
+  function updateHUD() {
+    roundTag.textContent = `Round ${currentRound} / ${ROUND_MAX}`;
+    modeTag.textContent = `Mode: ${mode.toUpperCase()}`;
+    timerTag.textContent = `Time: ${Math.ceil(timeLeft)}`;
+
+    p1RoundsEl.textContent = String(p1Rounds);
+    p2RoundsEl.textContent = String(p2Rounds);
+
+    p1Bar.style.width = `${(p1.hp / MAX_HP) * 100}%`;
+    p2Bar.style.width = `${(p2.hp / MAX_HP) * 100}%`;
+
+    // dynamic colors based on hp
+    p1Bar.style.background = `linear-gradient(90deg, rgba(100,183,255,.9), rgba(100,183,255,.45))`;
+    p2Bar.style.background = `linear-gradient(90deg, rgba(255,122,166,.9), rgba(255,122,166,.45))`;
+
+    p1BuffsEl.textContent = p1.getBuffText();
+    p2BuffsEl.textContent = p2.getBuffText();
+
+    if (state === GameState.MATCH_OVER) hintLine.textContent = 'Match over — Back to Menu to play again.';
+    else if (state === GameState.BETWEEN) hintLine.textContent = lastWinner ? `Next round soon…` : `Get ready…`;
+    else hintLine.textContent = 'Grab items. Win 2 rounds.';
+  }
+
+  // ===== Main loop =====
+  let last = performance.now();
+  function tick(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+
+    computeArena();
+
+    if (state === GameState.PLAY) {
+      // Round timer
+      timeLeft -= dt;
+      if (timeLeft <= 0) {
+        // time over: higher HP wins
+        const winner = (p1.hp === p2.hp) ? (Math.random()<0.5 ? p1 : p2) : (p1.hp > p2.hp ? p1 : p2);
+        endRound(winner);
+      }
+
+      // Update items
+      for (const it of items) it.update(dt);
+
+      // Players input
+      const p1Move = getMoveVecP1();
+      const p2Move = p2.isNpc ? [0,0] : getMoveVecP2();
+
+      const aiProfile = getAIProfile();
+
+      const p1Atk = wantsAttackP1();
+      const p2Atk = p2.isNpc ? false : wantsAttackP2();
+
+      const phase1 = p1.update(dt, arena, p1Move, p1Atk, p2, items, aiProfile);
+      const phase2 = p2.update(dt, arena, p2Move, p2Atk, p1, items, aiProfile);
+
+      // NPC attack decision (based on distance + angle + cooldown)
+      if (p2.isNpc && state === GameState.PLAY) {
+        const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        const ang = angleTo(p2.x, p2.y, p1.x, p1.y);
+        const diff = Math.abs(wrapAngle(ang - p2.facing));
+        const inCone = diff <= (SWORD_ARC*0.42);
+        const canAttack = (p2.cooldown <= 0 && p2.attackT <= 0);
+        const profile = aiProfile;
+
+        // Attack probability: more if close, buffed, or enemy low HP
+        let prob = 0;
+        if (d < 80 && inCone) prob += 0.55 * profile.bravery;
+        if (d < 95 && inCone) prob += 0.25;
+        if (p2.buff.damage > 0) prob += 0.12;
+        if (p1.hp < 40) prob += 0.10;
+        // don't suicide into shield
+        if (p1.buff.shield > 0) prob -= 0.08;
+
+        if (canAttack && Math.random() < prob) p2.startAttack();
+      }
+
+      // Resolve collisions
+      resolvePlayerCollision(p1, p2);
+
+      // Sword hits when active; prevent multi-hits per swing by tracking a flag
+      // We'll store per-swing hit lock on the player object (add dynamically)
+      if (p1.attackT > 0 && p1.attackT >= SWORD_WINDUP && p1.attackT < SWORD_WINDUP + SWORD_ACTIVE) {
+        if (!p1._hitLocked) {
+          if (attemptSwordHit(p1, p2)) p1._hitLocked = true;
+        }
+      } else {
+        p1._hitLocked = false;
+      }
+
+      if (p2.attackT > 0 && p2.attackT >= SWORD_WINDUP && p2.attackT < SWORD_WINDUP + SWORD_ACTIVE) {
+        if (!p2._hitLocked) {
+          if (attemptSwordHit(p2, p1)) p2._hitLocked = true;
+        }
+      } else {
+        p2._hitLocked = false;
+      }
+
+      // Item pickups
+      checkItemPickups(p1);
+      checkItemPickups(p2);
+
+      // Round end on KO
+      if (p1.hp <= 0) endRound(p2);
+      else if (p2.hp <= 0) endRound(p1);
+
+    } else if (state === GameState.BETWEEN) {
+      // Small freeze between rounds / start
+      freezeT -= dt;
+      if (freezeT <= 0) {
+        setToast(false);
+        state = GameState.PLAY;
+        timeLeft = roundTime;
+      }
+    } else if (state === GameState.MATCH_OVER) {
+      // keep confetti
+    }
+
+    updateConfetti(dt);
+    draw();
+    updateHUD();
+    requestAnimationFrame(tick);
+  }
+
+  // ===== Buttons =====
+  startBtn.addEventListener('click', () => startMatch());
+  resetBtn.addEventListener('click', () => backToMenu());
+
+  // Initial UI
+  scorePanel.classList.remove('hidden');
+  backToMenu();
+  requestAnimationFrame(tick);
+
+})();
+</script>
+</body>
+</html>
