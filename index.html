@@ -141,7 +141,6 @@
     #toast h2 { margin:0 0 6px; font-size:22px; letter-spacing:.2px; }
     #toast p { margin:0; opacity:.78; line-height:1.4; }
 
-    /* checkbox style */
     .chk { display:flex; align-items:center; gap:8px; }
     .chk input { transform: scale(1.1); }
   </style>
@@ -150,7 +149,6 @@
 <div id="wrap">
   <canvas id="c"></canvas>
 
-  <!-- HUD -->
   <div class="hud">
     <div id="topHUD">
       <div class="panel" id="scorePanel">
@@ -185,7 +183,7 @@
       </div>
 
       <div class="panel muted" style="max-width:min(580px, 92vw);">
-        <b>Attack (easier)</b>:
+        <b>Attack</b>:
         P1 <span class="kbd">E</span> / <span class="kbd">Space</span> / <span class="kbd">Click</span>,
         P2 <span class="kbd">Shift</span> / <span class="kbd">Enter</span>
         <div style="margin-top:6px;">
@@ -198,7 +196,6 @@
       </div>
     </div>
 
-    <!-- On-screen action buttons -->
     <div id="actionHUD">
       <button class="good" id="p1AtkBtn">P1 Attack</button>
       <button class="good" id="p2AtkBtn">P2 Attack</button>
@@ -206,7 +203,7 @@
 
     <div id="bottomHUD">
       <div class="panel muted">Tip: If input feels stuck, click the game window once (focus). Keys reset on tab-switch.</div>
-      <div class="panel muted">NPC avoids obstacles + attacks reliably (even Normal).</div>
+      <div class="panel muted">Hit effect added: sparks + slash + numbers + shake.</div>
     </div>
 
     <div id="toast" class="hidden">
@@ -215,15 +212,14 @@
     </div>
   </div>
 
-  <!-- HOME -->
   <div class="screen" id="homeScreen">
     <div class="card">
       <h1>2D Arena Duel</h1>
-      <p>2D 1v1 sword game with science buffs. Best of 3 rounds. (Easy Swing Assist + attack buttons)</p>
+      <p>2D 1v1 sword game with science buffs. Best of 3 rounds. (Hit effects added)</p>
       <div class="row" style="margin-bottom:12px;">
-        <span class="tag">Easy attack inputs</span>
-        <span class="tag">Smarter NPC pathing</span>
-        <span class="tag">Obstacles + items</span>
+        <span class="tag">Hit sparks</span>
+        <span class="tag">Slash arc</span>
+        <span class="tag">Damage numbers</span>
         <span class="tag">Bo3</span>
       </div>
       <div class="row">
@@ -237,7 +233,6 @@
     </div>
   </div>
 
-  <!-- SELECT -->
   <div class="screen hidden" id="selectScreen">
     <div class="card">
       <h1>Choose Mode</h1>
@@ -246,14 +241,14 @@
       <div class="grid2" style="margin-bottom:12px;">
         <div class="panel">
           <div class="title">1 Player</div>
-          <div class="muted">Fight a smart NPC that avoids obstacles, chases items, and attacks reliably.</div>
+          <div class="muted">Fight a smart NPC that avoids obstacles and attacks reliably.</div>
           <div style="margin-top:10px;">
             <button class="good" id="choose1p">Play 1P</button>
           </div>
         </div>
         <div class="panel">
           <div class="title">2 Player</div>
-          <div class="muted">Local 2P on one keyboard. (Also has on-screen attack buttons.)</div>
+          <div class="muted">Local 2P on one keyboard (plus on-screen attack buttons).</div>
           <div style="margin-top:10px;">
             <button class="good" id="choose2p">Play 2P</button>
           </div>
@@ -287,7 +282,6 @@
     </div>
   </div>
 
-  <!-- PRE-GAME MODAL -->
   <div class="modal hidden" id="infoModal">
     <div class="card">
       <h1>Controls & Items</h1>
@@ -397,9 +391,38 @@
   const p1AtkBtn = document.getElementById('p1AtkBtn');
   const p2AtkBtn = document.getElementById('p2AtkBtn');
 
+  // ===== Audio (tiny hit sound) =====
+  let audioCtx = null;
+  function ensureAudio(){
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playHitSound(){
+    try {
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(660, t);
+      o.frequency.exponentialRampToValueAtTime(220, t + 0.06);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.08, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.10);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t); o.stop(t + 0.11);
+    } catch {}
+  }
+  // unlock audio on first interaction
+  window.addEventListener('pointerdown', ensureAudio, { once:true });
+
   // ===== Input (sticky bug fixed) =====
   const keys = new Set();
   const pressedOnce = new Set();
+
+  let mousePressedOnce = false;
+  let p1BtnPressedOnce = false;
+  let p2BtnPressedOnce = false;
 
   function clearInput() {
     keys.clear();
@@ -421,22 +444,16 @@
   });
 
   window.addEventListener('blur', clearInput);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) clearInput();
-  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) clearInput(); });
 
-  // mouse click for P1
-  let mousePressedOnce = false;
-  window.addEventListener('mousedown', (e) => {
-    if (e.button === 0) mousePressedOnce = true;
-  });
-
-  // on-screen attack buttons (single press)
-  let p1BtnPressedOnce = false;
-  let p2BtnPressedOnce = false;
+  window.addEventListener('mousedown', (e) => { if (e.button === 0) mousePressedOnce = true; });
 
   function armButton(btn, which){
-    const down = (e) => { e.preventDefault(); if(which===1) p1BtnPressedOnce = true; else p2BtnPressedOnce = true; };
+    const down = (e) => {
+      e.preventDefault();
+      ensureAudio();
+      if(which===1) p1BtnPressedOnce = true; else p2BtnPressedOnce = true;
+    };
     btn.addEventListener('mousedown', down);
     btn.addEventListener('touchstart', down, {passive:false});
   }
@@ -448,7 +465,6 @@
   const ROUND_MAX = 3;
   const MAX_HP = 100;
 
-  // Sword
   const SWORD_RANGE = 72;
   const SWORD_ARC = Math.PI * 0.85;
   const SWORD_COOLDOWN = 0.60;
@@ -457,13 +473,146 @@
   const BASE_DAMAGE = 18;
   const BASE_KNOCKBACK = 330;
 
-  // Assist tuning (makes hitting easier but not free)
-  const ASSIST_RANGE = 115;             // if enemy is within this distance…
-  const ASSIST_MAX_TURN = Math.PI*0.55; // max angle correction
-  const ASSIST_STRENGTH = 0.70;         // 0..1
+  const ASSIST_RANGE = 115;
+  const ASSIST_MAX_TURN = Math.PI*0.55;
+  const ASSIST_STRENGTH = 0.70;
 
   const ITEM_RADIUS = 14;
   const ITEM_RESPAWN = 8.0;
+
+  // Hit effects
+  const hitSparks = [];   // particles
+  const hitSlashes = [];  // arc slashes
+  const dmgTexts  = [];   // floating numbers
+  let shakeT = 0;
+  let shakeAmp = 0;
+
+  function addShake(amount=6){
+    shakeAmp = Math.max(shakeAmp, amount);
+    shakeT = Math.max(shakeT, 0.12);
+  }
+
+  function spawnHitFX(x, y, dirAng, dmg){
+    // sparks
+    const count = 16 + (Math.random()*6|0);
+    for (let i=0;i<count;i++){
+      const a = dirAng + rand(-1.5, 1.5);
+      const s = rand(120, 520);
+      hitSparks.push({
+        x, y,
+        vx: Math.cos(a)*s,
+        vy: Math.sin(a)*s,
+        g: rand(680, 980),
+        life: rand(0.12, 0.22),
+        t: 0,
+        size: rand(2, 5),
+        hue: rand(35, 55) // warm sparks
+      });
+    }
+    // slash arc (quick)
+    hitSlashes.push({
+      x, y,
+      ang: dirAng,
+      life: 0.16,
+      t: 0
+    });
+    // damage text
+    dmgTexts.push({
+      x, y,
+      vy: -rand(35, 55),
+      life: 0.75,
+      t: 0,
+      dmg: Math.round(dmg)
+    });
+
+    addShake(7);
+    playHitSound();
+  }
+
+  function updateHitFX(dt){
+    for (let i=hitSparks.length-1;i>=0;i--){
+      const p = hitSparks[i];
+      p.t += dt;
+      p.vy += p.g*dt;
+      p.x += p.vx*dt;
+      p.y += p.vy*dt;
+      p.vx = lerp(p.vx, 0, 1 - Math.exp(-10*dt));
+      if (p.t >= p.life) hitSparks.splice(i,1);
+    }
+    for (let i=hitSlashes.length-1;i>=0;i--){
+      const s = hitSlashes[i];
+      s.t += dt;
+      if (s.t >= s.life) hitSlashes.splice(i,1);
+    }
+    for (let i=dmgTexts.length-1;i>=0;i--){
+      const d = dmgTexts[i];
+      d.t += dt;
+      d.y = d.y + d.vy*dt;
+      d.vy += 90*dt; // slow upward motion to stop
+      if (d.t >= d.life) dmgTexts.splice(i,1);
+    }
+
+    if (shakeT > 0){
+      shakeT -= dt;
+      shakeAmp = lerp(shakeAmp, 0, 1 - Math.exp(-18*dt));
+      if (shakeT <= 0) { shakeT = 0; shakeAmp = 0; }
+    }
+  }
+
+  function drawHitFX(){
+    // slashes
+    for (const s of hitSlashes){
+      const u = s.t / s.life;
+      const alpha = (1 - u) * 0.9;
+      const r = 26 + 18*u;
+      const arc = 1.35;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = 'rgba(255,255,255,.9)';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, s.ang-arc*0.5, s.ang+arc*0.5);
+      ctx.stroke();
+
+      ctx.globalAlpha = alpha*0.55;
+      ctx.strokeStyle = 'rgba(140,200,255,.8)';
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, s.ang-arc*0.45, s.ang+arc*0.45);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // sparks
+    for (const p of hitSparks){
+      const u = p.t / p.life;
+      ctx.save();
+      ctx.globalAlpha = 1 - u;
+      ctx.fillStyle = `hsl(${p.hue} 95% 62%)`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size*(1-u), 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // damage text
+    for (const d of dmgTexts){
+      const u = d.t / d.life;
+      const a = 1 - u;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.font = 'bold 16px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,255,255,.95)';
+      ctx.strokeStyle = 'rgba(0,0,0,.45)';
+      ctx.lineWidth = 4;
+      const text = `-${d.dmg}`;
+      ctx.strokeText(text, d.x, d.y);
+      ctx.fillText(text, d.x, d.y);
+      ctx.restore();
+    }
+  }
 
   // ===== Items =====
   const ItemType = { HEAL:'HEAL', SPEED:'SPEED', SHIELD:'SHIELD', DAMAGE:'DAMAGE', GRAVITY:'GRAVITY' };
@@ -477,12 +626,8 @@
   const pickItem = () => itemDefs[(Math.random() * itemDefs.length) | 0];
 
   // ===== Map =====
-  class Obstacle {
-    constructor(x, y, w, h, r=10) { this.x=x; this.y=y; this.w=w; this.h=h; this.r=r; this.isCircle=false; }
-  }
-  class Pillar {
-    constructor(x, y, rad) { this.x=x; this.y=y; this.rad=rad; this.isCircle=true; }
-  }
+  class Obstacle { constructor(x, y, w, h, r=10){ this.x=x; this.y=y; this.w=w; this.h=h; this.r=r; this.isCircle=false; } }
+  class Pillar { constructor(x, y, rad){ this.x=x; this.y=y; this.rad=rad; this.isCircle=true; } }
   const obstacles = [];
   const arena = { x:0,y:0,w:0,h:0 };
 
@@ -1033,27 +1178,25 @@
     const d = Math.hypot(dx, dy);
     if (d > ASSIST_RANGE) return;
 
-    // no assist if obstacle blocks and not very close
     if (!hasLineOfSight(attacker.x, attacker.y, defender.x, defender.y) && d > 70) return;
 
     const targetAng = Math.atan2(dy, dx);
     const delta = wrapAngle(targetAng - attacker.facing);
-
-    // limit correction so it still feels like skill
     const limited = clamp(delta, -ASSIST_MAX_TURN, ASSIST_MAX_TURN) * ASSIST_STRENGTH;
     attacker.facing = wrapAngle(attacker.facing + limited);
   }
 
+  // ===== Sword hit (now returns damage + hitpoint for FX) =====
   function attemptSwordHit(attacker, defender){
     const d2 = dist2(attacker.x, attacker.y, defender.x, defender.y);
-    if (d2 > SWORD_RANGE*SWORD_RANGE) return false;
+    if (d2 > SWORD_RANGE*SWORD_RANGE) return null;
 
     const angToDef = angleTo(attacker.x, attacker.y, defender.x, defender.y);
     const diff = Math.abs(wrapAngle(angToDef - attacker.facing));
-    if (diff > (SWORD_ARC * 0.5)) return false;
+    if (diff > (SWORD_ARC * 0.5)) return null;
 
     if (!hasLineOfSight(attacker.x, attacker.y, defender.x, defender.y)) {
-      if (d2 > (48*48)) return false;
+      if (d2 > (48*48)) return null;
     }
 
     const dmg = BASE_DAMAGE * attacker.dmgMul;
@@ -1064,7 +1207,12 @@
     const kb = BASE_KNOCKBACK * defender.kbMul;
     defender.vx += nx * kb * (0.010 + Math.random()*0.004);
     defender.vy += ny * kb * (0.010 + Math.random()*0.004);
-    return true;
+
+    // hit point (between them, closer to defender)
+    const hitX = lerp(attacker.x, defender.x, 0.65);
+    const hitY = lerp(attacker.y, defender.y, 0.65);
+
+    return { dmg: final, hitX, hitY, ang: angToDef };
   }
 
   function checkItemPickups(pl){
@@ -1111,12 +1259,14 @@
     mousePressedOnce = false;
     p1BtnPressedOnce = false;
     pressedOnce.delete('e'); pressedOnce.delete('E'); pressedOnce.delete(' ');
+    if (key) ensureAudio();
     return key;
   }
   function wantsAttackP2Once(){
     const key = pressedOnce.has('Shift') || pressedOnce.has('Enter') || p2BtnPressedOnce;
     p2BtnPressedOnce = false;
     pressedOnce.delete('Shift'); pressedOnce.delete('Enter');
+    if (key) ensureAudio();
     return key;
   }
 
@@ -1181,13 +1331,6 @@
         ctx.beginPath();
         ctx.arc(ob.x, ob.y, ob.rad+2, 0, Math.PI*2);
         ctx.stroke();
-
-        ctx.globalAlpha = 0.35;
-        ctx.strokeStyle = 'rgba(255,120,180,.55)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(ob.x, ob.y, ob.rad-8, 0, Math.PI*2);
-        ctx.stroke();
         ctx.restore();
       } else {
         ctx.save();
@@ -1197,14 +1340,6 @@
         ctx.strokeStyle = 'rgba(180,220,255,.18)';
         ctx.lineWidth = 2;
         roundRect(ctx, ob.x, ob.y, ob.w, ob.h, ob.r);
-        ctx.stroke();
-
-        ctx.globalAlpha = 0.35;
-        ctx.strokeStyle = 'rgba(140,255,190,.35)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(ob.x+10, ob.y+10);
-        ctx.lineTo(ob.x+ob.w-10, ob.y+10);
         ctx.stroke();
         ctx.restore();
       }
@@ -1288,10 +1423,6 @@
     ctx.fillStyle = 'rgba(40,26,18,.95)';
     roundRect(ctx, -handleLen*0.15, -3, handleLen, 6, 3);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,.12)';
-    ctx.lineWidth = 1;
-    roundRect(ctx, -handleLen*0.15, -3, handleLen, 6, 3);
-    ctx.stroke();
 
     ctx.fillStyle = 'rgba(180,220,255,.28)';
     roundRect(ctx, handleLen*0.55, -5, 10, 10, 4);
@@ -1302,14 +1433,6 @@
     ctx.fillStyle = 'rgba(220,240,255,.92)';
     roundRect(ctx, 0, -bladeW/2, bladeLen, bladeW, 3);
     ctx.fill();
-
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = 'rgba(255,255,255,.85)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(2, -bladeW/2);
-    ctx.lineTo(bladeLen-2, -bladeW/2);
-    ctx.stroke();
 
     ctx.globalAlpha = 1;
     ctx.beginPath();
@@ -1387,11 +1510,24 @@
   }
 
   function draw(){
+    // camera shake
+    ctx.save();
+    if (shakeT > 0 && shakeAmp > 0.1){
+      const sx = rand(-shakeAmp, shakeAmp);
+      const sy = rand(-shakeAmp, shakeAmp);
+      ctx.translate(sx, sy);
+    }
+
     drawArena();
     for (const it of items) drawItem(it);
     drawPlayer(p1, '#64b7ff');
     drawPlayer(p2, p2.isNpc ? '#ff7aa6' : '#7dffb1');
+
+    // hit effects should draw on top of players
+    drawHitFX();
     drawConfetti();
+
+    ctx.restore();
   }
 
   // ===== HUD update =====
@@ -1417,7 +1553,7 @@
     else hintLine.textContent = easyAssist ? 'Easy Swing Assist ON: hitting is easier.' : 'Assist OFF: pure skill swings.';
   }
 
-  // ===== NPC attack (reliable) =====
+  // ===== NPC attack =====
   function npcTryAttack(aiProfile){
     const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
     const ang = angleTo(p2.x, p2.y, p1.x, p1.y);
@@ -1467,7 +1603,6 @@
       const p1Atk = wantsAttackP1Once();
       const p2Atk = p2.isNpc ? false : wantsAttackP2Once();
 
-      // apply assist right when attack is triggered
       if (p1Atk) applyAssist(p1, p2);
       if (p2Atk && !p2.isNpc) applyAssist(p2, p1);
 
@@ -1482,13 +1617,21 @@
 
       const p1Active = (p1.attackT > 0 && p1.attackT >= SWORD_WINDUP && p1.attackT < SWORD_WINDUP + SWORD_ACTIVE);
       if (p1Active && !p1._hitLocked) {
-        if (attemptSwordHit(p1, p2)) p1._hitLocked = true;
+        const hit = attemptSwordHit(p1, p2);
+        if (hit) {
+          p1._hitLocked = true;
+          spawnHitFX(hit.hitX, hit.hitY, hit.ang, hit.dmg);
+        }
       }
       if (!p1Active) p1._hitLocked = false;
 
       const p2Active = (p2.attackT > 0 && p2.attackT >= SWORD_WINDUP && p2.attackT < SWORD_WINDUP + SWORD_ACTIVE);
       if (p2Active && !p2._hitLocked) {
-        if (attemptSwordHit(p2, p1)) p2._hitLocked = true;
+        const hit = attemptSwordHit(p2, p1);
+        if (hit) {
+          p2._hitLocked = true;
+          spawnHitFX(hit.hitX, hit.hitY, hit.ang, hit.dmg);
+        }
       }
       if (!p2Active) p2._hitLocked = false;
 
@@ -1504,10 +1647,13 @@
         setToast(false);
         state = GameState.PLAY;
         timeLeft = roundTime;
+      } else if (freezeT <= 0.05) {
+        // start next round if needed
       }
     }
 
     updateConfetti(dt);
+    updateHitFX(dt);
     draw();
     updateHUD();
 
@@ -1533,13 +1679,15 @@
 
   backBtn.addEventListener('click', () => goHome());
 
-  function init() {
-    computeArena();
-    buildMap();
-    goHome();
-    requestAnimationFrame(tick);
+  // ===== Items / round glue =====
+  function startRoundPlay(){
+    state = GameState.PLAY;
+    timeLeft = roundTime;
   }
-  init();
+
+  // ===== Init =====
+  computeArena(); buildMap(); goHome();
+  requestAnimationFrame(tick);
 })();
 </script>
 </body>
