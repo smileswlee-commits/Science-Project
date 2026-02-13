@@ -133,7 +133,7 @@
     .itemsBox .it .fx{opacity:.9}
     .itemsBox .it .use{opacity:.75;font-size:12px;margin-top:2px;line-height:1.3}
 
-    /* Debug overlay (shows JS errors on screen) */
+    /* Debug overlay */
     #errOverlay{
       position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;
       background:rgba(120,0,0,.85);border:1px solid rgba(255,255,255,.18);
@@ -141,33 +141,22 @@
       display:none;white-space:pre-wrap;max-height:40vh;overflow:auto;
     }
 
-    /* about:blank helper buttons */
     .miniActionRow{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:10px}
-    .smallbtn{
-      padding:8px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.18);
-      background:rgba(255,255,255,.10);color:#e8eefc;cursor:pointer;
-      font-size:14px;
-    }
-    .smallbtn:hover{background:rgba(255,255,255,.16)}
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
 
-  <!-- Debug -->
   <div id="errOverlay"></div>
 
-  <!-- Mobile HUD toggle -->
   <div id="uiBackdrop" class="ui-backdrop"></div>
   <button id="uiBtn" class="ui-btn">☰</button>
 
-  <!-- Mobile Touch Controls -->
   <div id="touchUI" class="touch-ui" style="display:none">
     <div class="touch-stick" id="moveStick"><div class="touch-knob" id="moveKnob"></div></div>
     <div class="touch-stick" id="aimStick"><div class="touch-knob" id="aimKnob"></div></div>
   </div>
 
-  <!-- Home / Mode Menu -->
   <div id="homeMenu" class="overlay">
     <div class="panel">
       <div class="title">Arena Tank Game</div>
@@ -260,9 +249,7 @@
 
 <script>
 (() => {
-  // =========================
-  // Debug: show errors on screen
-  // =========================
+  // Debug
   const errOverlay = document.getElementById("errOverlay");
   function showErr(msg){
     if (!errOverlay) return;
@@ -276,14 +263,12 @@
     showErr("PROMISE ERROR:\n" + (e.reason?.message || String(e.reason || "Unknown")));
   });
 
-  // ---------- Canvas
+  // Canvas
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d");
-  if (!ctx) { showErr("Canvas 2D context failed. Try a different browser."); return; }
+  if (!ctx) { showErr("Canvas 2D context failed."); return; }
 
-  // (tiny perf help) cap DPR
   const DPR = Math.min(1.5, window.devicePixelRatio || 1);
-
   function resize(){
     canvas.width = window.innerWidth * DPR;
     canvas.height = window.innerHeight * DPR;
@@ -294,7 +279,7 @@
   window.addEventListener("resize", resize);
   resize();
 
-  // ---------- HUD elements
+  // HUD elements
   const hpTxt = document.getElementById("hpTxt");
   const hpFill = document.getElementById("hpFill");
   const rgTxt = document.getElementById("rgTxt");
@@ -329,14 +314,14 @@
   const itmTxt = document.getElementById("itmTxt");
   const buffTxt = document.getElementById("buffTxt");
 
-  // ---------- Helpers
+  // Helpers
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const dist2 = (ax, ay, bx, by) => { const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
   const circleHit = (ax, ay, ar, bx, by, br) => dist2(ax, ay, bx, by) <= (ar+br)*(ar+br);
   const angleTo = (ax, ay, bx, by) => Math.atan2(by - ay, bx - ax);
 
-  // ---------- Input
+  // Input
   const keys = new Set();
   window.addEventListener("keydown", (e) => keys.add(e.key.toLowerCase()));
   window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
@@ -345,7 +330,7 @@
   window.addEventListener("mousedown", () => mouse.down = true);
   window.addEventListener("mouseup", () => mouse.down = false);
 
-  // ---------- Touch
+  // Touch
   const touch = {
     enabled: ("ontouchstart" in window) || (navigator.maxTouchPoints > 0),
     move: { active:false, id:null, ox:0, oy:0, vx:0, vy:0 },
@@ -433,7 +418,7 @@
   }
   window.addEventListener("touchmove", (e)=>{ if (touch.enabled) e.preventDefault(); }, {passive:false});
 
-  // ---------- HUD popup
+  // HUD popup
   let hudOpen = false;
   function setHudOpen(v){
     hudOpen = v;
@@ -451,7 +436,7 @@
   if (uiBtn) uiBtn.addEventListener("click", () => setHudOpen(!hudOpen));
   if (uiBackdrop) uiBackdrop.addEventListener("click", () => setHudOpen(false));
 
-  // ---------- World / camera
+  // World / camera
   const world = { w: 4200, h: 4200 };
   const cam = { x: 0, y: 0 };
   function updateCamera(fx, fy){
@@ -461,7 +446,7 @@
     cam.y = clamp(cam.y, 0, world.h - window.innerHeight);
   }
 
-  // ---------- Game / stage
+  // Stage system
   const UNLOCK_RANK = 5;
   const MAX_STAGE = 10;
   const CHECKPOINT_EVERY = 5;
@@ -473,14 +458,14 @@
     hard:   { name:"Hard",   npcCount:5, aimError:0.05, reloadMul:0.85, dmgMul:1.10, moveMul:1.04, xpMul:1.10 },
   };
 
-  // ---------- Trees
+  // Upgrade Trees
   const TREES = {
     starter: { id:"starter", name:"Starter Tree", cost:0,    desc:"Balanced set",        classesAtRank10:["dual","longshot","sprayer"] },
     heavy:   { id:"heavy",   name:"Heavy Tree",   cost:3000, desc:"Slow but powerful",   classesAtRank10:["twinheavy","cannonline","fortress"] },
     speed:   { id:"speed",   name:"Speed Tree",   cost:3000, desc:"Fast & aggressive",   classesAtRank10:["splitshot","rapid","skirmisher"] },
   };
 
-  // ---------- Scientific Items
+  // Scientific Items
   const ITEMS = {
     titanium: {
       id:"titanium", name:"Titanium Alloy", color:"#a7b1c7", duration: 22,
@@ -535,7 +520,7 @@
     itemsDescBox.innerHTML = `<b>Scientific Items (pickups)</b>${html}`;
   }
 
-  // ---------- Player
+  // Player
   const player = {
     id:"player",
     x: world.w/2, y: world.h/2, r:18, angle:0,
@@ -555,17 +540,16 @@
     effects: new Map(),
     damageTakenMul: 1.0
   };
-
   const DIAMONDS_PER_KILL = 50;
 
-  // ---------- Entities
+  // Entities
   const bullets = [];
   const enemies = [];
   const shapes = [];
   const pickups = [];
   let boss = null;
 
-  // ---------- Mode
+  // Mode
   function setMode(mode){
     game.mode = mode;
     const preset = MODE_PRESETS[mode];
@@ -586,7 +570,7 @@
     });
   }
 
-  // ---------- Menus
+  // Menus
   function menusOpen(){
     if (game.state === "home") return true;
     return (statChoices && statChoices.style.display==="block") ||
@@ -594,7 +578,7 @@
            (shopPanel && shopPanel.style.display==="block");
   }
 
-  // ---------- Shop toggle
+  // Shop
   if (shopBtn){
     shopBtn.addEventListener("click", () => {
       shopPanel.style.display = (shopPanel.style.display==="block") ? "none" : "block";
@@ -650,7 +634,7 @@
     }
   }
 
-  // ---------- Stat upgrades
+  // Stat upgrades
   let pendingRanks = 0;
   function showStatChoices(){ if (statChoices) statChoices.style.display="block"; }
   function hideStatChoices(){ if (statChoices) statChoices.style.display="none"; }
@@ -681,7 +665,7 @@
     }
   }
 
-  // ---------- Classes
+  // Classes
   const CLASSES = {
     dual: {
       name:"Dual Cannons",
@@ -774,7 +758,7 @@
     recalcDerivedStats(player);
   }
 
-  // ✅ Safe derived stats (NPC safe too)
+  // Derived stats (effects)
   function recalcDerivedStats(p){
     let moveSpeed = p.base.moveSpeed;
     let damage = p.base.damage;
@@ -785,8 +769,7 @@
     let regenDelay = p.base.regenDelay;
 
     let damageTakenMul = 1.0;
-    const hasEffects = p.effects && typeof p.effects.values === "function";
-    if (hasEffects){
+    if (p.effects && typeof p.effects.values === "function"){
       for (const eff of p.effects.values()){
         const m = eff.mods || {};
         if (m.moveSpeedMul) moveSpeed *= m.moveSpeedMul;
@@ -811,7 +794,7 @@
     if (typeof p.hp === "number") p.hp = Math.min(p.hp, p.maxHp);
   }
 
-  // ---------- XP
+  // XP
   function npcAutoSpendPoints(npc){
     const ups = ["damage","bulletSpeed","reload","moveSpeed","maxHp","regen"];
     while (npc.points > 0){
@@ -853,7 +836,7 @@
     if (shopPanel && shopPanel.style.display==="block") renderShopAndInventory();
   }
 
-  // ---------- Shapes
+  // Shapes
   function spawnShape(){
     const t = Math.random();
     let type = "square";
@@ -877,7 +860,7 @@
   }
   for (let i=0;i<45;i++) spawnShape();
 
-  // ---------- Pickups
+  // Pickups
   function spawnPickup(typeId){
     const it = ITEMS[typeId];
     pickups.push({ id: typeId, x: rand(120, world.w-120), y: rand(120, world.h-120), r: 14, active: true, respawn: 0, color: it.color });
@@ -912,11 +895,9 @@
     buffTxt.textContent = "Active items: " + parts.join(" • ");
   }
 
-  // ---------- Bullets
+  // Bullets
   function fireBullet(owner, angle, speed, damage, radius=5){
-    // bullet cap to reduce lag
     if (bullets.length > 700) return;
-
     const muzzle = owner.r + 16;
     bullets.push({
       ownerId: owner.id,
@@ -929,6 +910,7 @@
       life: 1.9
     });
   }
+
   function shootPlayer(){
     if (player.shotCooldown > 0) return;
     player.shotCooldown = player.reload;
@@ -937,7 +919,7 @@
     else fireBullet(player, player.angle, player.bulletSpeed, player.damage);
   }
 
-  // ---------- Enemies
+  // Enemies
   let enemyIdCounter = 1;
   function spawnEnemy(){
     const preset = MODE_PRESETS[game.mode];
@@ -996,7 +978,7 @@
     for (let i=0;i<preset.npcCount;i++) spawnEnemy();
   }
 
-  // ---------- Boss
+  // Boss
   function spawnBoss(){
     boss = {
       id: "boss",
@@ -1030,7 +1012,7 @@
     if (t.id === player.id) showHome();
   }
 
-  // ---------- Home / Run
+  // Home / Run
   function showHome(){
     if (homeMenu) homeMenu.style.display = "flex";
     game.state = "home";
@@ -1088,31 +1070,25 @@
     });
   }
 
-  // ---------- about:blank launcher + fullscreen
+  // about:blank + fullscreen overlay
   function openInAboutBlank(){
-    // open popup (must be from click)
     const w = window.open("about:blank", "_blank");
     if (!w){
       alert("Popup blocked. Allow popups for this site, then try again.");
       return;
     }
 
-    // clone current game HTML into new window
     const html = "<!doctype html>\n" + document.documentElement.outerHTML;
     w.document.open();
     w.document.write(html);
     w.document.close();
 
-    // Inject a small overlay in the new window:
-    // - Fullscreen button
-    // - HUD toggle
     const injectOverlay = () => {
       try{
         const doc = w.document;
         const body = doc.body;
-        if (!body) { setTimeout(injectOverlay, 50); return; }
+        if (!body){ setTimeout(injectOverlay, 50); return; }
 
-        // make sure canvas is visible
         const style = doc.createElement("style");
         style.textContent = `
           #blankOverlay{
@@ -1155,29 +1131,13 @@
         };
 
         const homeBtn = doc.createElement("button");
-        homeBtn.textContent = "Home";
-        homeBtn.onclick = () => {
-          // click the game's internal Home menu by calling showHome if exists; otherwise reload
-          // simplest: reload will bring home menu back
-          w.location.reload();
-        };
+        homeBtn.textContent = "Home (Reload)";
+        homeBtn.onclick = () => { w.location.reload(); };
 
         wrap.appendChild(fsBtn);
         wrap.appendChild(hudBtn);
         wrap.appendChild(homeBtn);
-
         body.appendChild(wrap);
-
-        // small improvement: close the home menu automatically in new window if already playing
-        // (if user clicked "Play in about:blank", they likely want to start there)
-        // We'll try to click Start automatically only if menu is visible.
-        setTimeout(() => {
-          const hm = doc.getElementById("homeMenu");
-          const sb = doc.getElementById("startBtn");
-          if (hm && sb && hm.style.display !== "none"){
-            // do NOT auto-click Start (some browsers block). Keep user control.
-          }
-        }, 200);
 
       } catch(e){
         setTimeout(injectOverlay, 80);
@@ -1186,12 +1146,9 @@
 
     w.addEventListener("load", () => injectOverlay(), { once:true });
   }
+  if (blankBtn) blankBtn.addEventListener("click", openInAboutBlank);
 
-  if (blankBtn){
-    blankBtn.addEventListener("click", openInAboutBlank);
-  }
-
-  // ---------- HUD update
+  // HUD update
   function updateHud(){
     if (hpTxt) hpTxt.textContent = `${Math.ceil(player.hp)} / ${player.maxHp}`;
     if (hpFill) hpFill.style.width = `${(player.hp/player.maxHp)*100}%`;
@@ -1212,7 +1169,7 @@
     describeActiveBuffs();
   }
 
-  // ---------- Init
+  // Init
   setMode("easy");
   renderItemDescriptions();
   seedPickups();
@@ -1221,7 +1178,7 @@
   updateHud();
   showHome();
 
-  // ---------- Main loop
+  // Loop
   let last = performance.now();
   function loop(now){
     const dt = Math.min(0.033, (now-last)/1000);
@@ -1301,7 +1258,7 @@
         e.wanderDir = rand(0,Math.PI*2);
       }
 
-      const t = findTargetForEnemy(e);
+      const t = player.alive ? player : null;
       if (t){
         const ang = angleTo(e.x, e.y, t.x, t.y);
         e.angle = ang + rand(-e.aimError, e.aimError);
@@ -1325,12 +1282,10 @@
     // boss spawn
     if (game.phase === "fight"){
       const alive = livingTanksNoBoss();
-      if (player.alive && alive.length === 1){
-        spawnBoss();
-      }
+      if (player.alive && alive.length === 1) spawnBoss();
     }
 
-    // boss AI
+    // boss ai
     if (boss && boss.alive){
       boss.hitFlash = Math.max(0, boss.hitFlash - dt);
       const ang = angleTo(boss.x, boss.y, player.x, player.y);
@@ -1383,7 +1338,6 @@
     }
 
     // bullets
-    // quick camera cull for collision checks
     const margin = 300;
     const viewL = cam.x - margin;
     const viewT = cam.y - margin;
@@ -1401,7 +1355,6 @@
         continue;
       }
 
-      // skip collision checks if way offscreen (perf)
       if (b.x < viewL || b.x > viewR || b.y < viewT || b.y > viewB) continue;
 
       // hit shapes
@@ -1475,7 +1428,7 @@
       }
     }
 
-    // shapes drift + regen
+    // shapes drift
     for (const s of shapes){
       s.x += s.vx*dt; s.y += s.vy*dt;
       s.rot += s.rotSpd*dt;
@@ -1484,6 +1437,7 @@
       if (s.y < s.r || s.y > world.h-s.r){ s.vy *= -1; s.y = clamp(s.y, s.r, world.h-s.r); }
     }
 
+    // regen
     if (player.alive){
       player.sinceDamaged += dt;
       if (player.sinceDamaged >= player.regenDelay && player.hp > 0 && player.hp < player.maxHp){
@@ -1495,7 +1449,7 @@
     updateHud();
   }
 
-  // ---------- Drawing
+  // Drawing
   function draw(){
     ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
     drawGrid();
@@ -1518,6 +1472,10 @@
     if (player.alive) drawTank(player, "#4aa3ff", "#9ad0ff");
 
     ctx.restore();
+
+    // ✅ UI overlays back
+    drawTopRight();
+    drawMiniMap();
   }
 
   function drawGrid(){
@@ -1534,6 +1492,89 @@
     for (let x=ox;x<window.innerWidth;x+=grid){ ctx.moveTo(x,0); ctx.lineTo(x,window.innerHeight); }
     for (let y=oy;y<window.innerHeight;y+=grid){ ctx.moveTo(0,y); ctx.lineTo(window.innerWidth,y); }
     ctx.stroke();
+  }
+
+  // ✅ Top right info
+  function drawTopRight(){
+    const pad=14;
+    ctx.font="14px system-ui,-apple-system,Segoe UI,Roboto,Arial";
+    ctx.textAlign="right";
+    ctx.textBaseline="top";
+    ctx.fillStyle="rgba(232,238,252,0.92)";
+    ctx.fillText(`Stage: ${game.stage}`, window.innerWidth-pad, pad);
+    ctx.fillText(`Phase: ${game.phase.toUpperCase()}`, window.innerWidth-pad, pad+18);
+
+    ctx.fillStyle="rgba(232,238,252,0.75)";
+    ctx.fillText(`Tree: ${TREES[player.equippedTreeId].name}`, window.innerWidth-pad, pad+40);
+    const clsName = (CLASSES[player.classId]?.name) || "Basic";
+    ctx.fillText(`Class: ${clsName}`, window.innerWidth-pad, pad+58);
+  }
+
+  // ✅ Mini map back
+  function drawMiniMap(){
+    if (touch.enabled) return;
+    const size = 180;
+    const pad = 14;
+    const x = window.innerWidth - pad - size;
+    const y = pad + 84;
+
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, x, y, size, size, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    const sx = size / world.w;
+    const sy = size / world.h;
+
+    function dot(wx, wy, r){
+      const px = x + wx * sx;
+      const py = y + wy * sy;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "rgba(255,255,255,0.30)";
+    for (const s of shapes) dot(s.x, s.y, 1.6);
+
+    ctx.fillStyle = "rgba(154,208,255,0.60)";
+    for (const p of pickups) if (p.active) dot(p.x, p.y, 1.8);
+
+    ctx.fillStyle = "rgba(255,107,138,0.90)";
+    for (const e of enemies) if (e.alive) dot(e.x, e.y, 2.4);
+
+    if (boss && boss.alive){
+      ctx.fillStyle = "rgba(180,120,255,0.95)";
+      dot(boss.x, boss.y, 4.0);
+    }
+
+    if (player.alive){
+      ctx.fillStyle = "rgba(74,163,255,0.95)";
+      dot(player.x, player.y, 3.0);
+    }
+
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 1.5;
+    const vw = window.innerWidth * sx;
+    const vh = window.innerHeight * sy;
+    const vx = x + cam.x * sx;
+    const vy = y + cam.y * sy;
+    ctx.strokeRect(vx, vy, vw, vh);
+
+    ctx.globalAlpha = 0.8;
+    ctx.font = "12px system-ui,-apple-system,Segoe UI,Roboto,Arial";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "rgba(232,238,252,0.85)";
+    ctx.fillText("Map", x + 8, y + 6);
+
+    ctx.restore();
   }
 
   function drawPickup(p){
@@ -1604,6 +1645,7 @@
     ctx.restore();
   }
 
+  // ✅ XP shapes HP ring restored
   function drawShape(s){
     ctx.save();
     ctx.translate(s.x,s.y);
@@ -1620,6 +1662,15 @@
     else polygonPath(ctx,5,s.r);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
+
+    // ring
+    ctx.rotate(-s.rot);
+    const hpPct = clamp(s.hp/s.maxHp,0,1);
+    ctx.strokeStyle="rgba(255,255,255,0.45)";
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.arc(0,0,s.r+8, -Math.PI/2, -Math.PI/2 + hpPct*Math.PI*2);
     ctx.stroke();
 
     ctx.restore();
